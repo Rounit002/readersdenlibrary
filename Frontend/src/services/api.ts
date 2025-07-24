@@ -123,9 +123,9 @@ interface CollectionStats {
 }
 
 const API_URL = window.cordova
-  ? 'https://maasaraswatilibrary.onrender.com/api'
+  ? 'https://readersdenlibrary.onrender.com/api'
   : process.env.NODE_ENV === 'production'
-    ? 'https://maasaraswatilibrary.onrender.com/api'
+    ? 'https://readersdenlibrary.onrender.com/api'
     : 'http://localhost:3000/api';
 
 const apiClient = axios.create({
