@@ -3,112 +3,139 @@ module.exports = (pool) => {
   const { checkAdmin, checkAdminOrStaff } = require('./auth');
   const { checkPermissions } = require('./auth');
   
-  // Public student self-registration endpoint
-  router.post('/public/register', async (req, res) => {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+ router.post('/public/register', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-      // Extract and validate required fields
-      const { name, email, phone, address, branch_id, registration_number, father_name, aadhar_number } = req.body;
+    // Extract and validate required fields
+    const { name, email, phone, address, branch_id, registration_number, father_name, aadhar_number } = req.body;
 
-      // Required fields validation
-      if (!name || !phone || !branch_id) {
-        return res.status(400).json({ 
-          success: false,
-          message: 'Name, phone, and branch are required fields' 
-        });
-      }
-
-      // Set default values for public registration
-      const membershipStart = new Date().toISOString().split('T')[0];
-      const membershipEnd = new Date();
-      membershipEnd.setFullYear(membershipEnd.getFullYear() + 1); // 1 year membership by default
-      
-      // Default financial values (all zeros for public registration)
-      const totalFee = 0;
-      const amountPaid = 0;
-      const cash = 0;
-      const online = 0;
-      const securityMoney = 0;
-      const discount = 0;
-      const dueAmount = totalFee - discount - amountPaid;
-
-      // Check if phone already exists
-      const existingStudent = await client.query(
-        'SELECT id FROM students WHERE phone = $1',
-        [phone]
-      );
-
-      if (existingStudent.rows.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'A student with this phone number already exists.'
-        });
-      }
-
-      // Insert the new student - using only columns that exist in the database
-      const result = await client.query(
-        `INSERT INTO students (
-          name, email, phone, address, branch_id, registration_number,
-          father_name, aadhar_number, membership_start, membership_end,
-          total_fee, amount_paid, due_amount, cash, online, security_money, 
-          discount, is_active, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
-        RETURNING id`,
-        [
-          name, 
-          email || null, 
-          phone, 
-          address || null, 
-          branch_id, 
-          registration_number || null,
-          father_name || null, 
-          aadhar_number || null,
-          membershipStart, 
-          membershipEnd.toISOString().split('T')[0],
-          totalFee, 
-          amountPaid, 
-          dueAmount,
-          cash, 
-          online, 
-          securityMoney, 
-          discount, 
-          true // is_active
-        ]
-      );
-
-      const studentId = result.rows[0].id;
-
-      await client.query('COMMIT');
-      
-      res.status(201).json({
-        success: true,
-        message: 'Registration successful!',
-        studentId
-      });
-
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('Error in public student registration:', err);
-      
-      // Handle duplicate phone number error (additional check)
-      if (err.code === '23505' && err.constraint === 'students_phone_key') {
-        return res.status(400).json({
-          success: false,
-          message: 'A student with this phone number already exists.'
-        });
-      }
-      
-      res.status(500).json({
+    // Required fields validation
+    if (!name || !phone || !branch_id) {
+      return res.status(400).json({
         success: false,
-        message: 'An error occurred during registration. Please try again.',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message: 'Name, phone, and branch are required fields'
       });
-    } finally {
-      client.release();
     }
-  });
+
+    // Set default values for public registration
+    const membershipStart = new Date().toISOString().split('T')[0];
+    const membershipEnd = new Date();
+    membershipEnd.setFullYear(membershipEnd.getFullYear() + 1); // 1 year membership by default
+    const membershipEndFormatted = membershipEnd.toISOString().split('T')[0];
+
+    // Default financial values (all zeros for public registration)
+    const totalFee = 0;
+    const amountPaid = 0;
+    const cash = 0;
+    const online = 0;
+    const securityMoney = 0;
+    const discount = 0;
+    const dueAmount = totalFee - discount - amountPaid;
+    const status = 'active'; // New students are active by default
+
+    // Check if phone already exists
+    const existingStudent = await client.query(
+      'SELECT id FROM students WHERE phone = $1',
+      [phone]
+    );
+
+    if (existingStudent.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'A student with this phone number already exists.'
+      });
+    }
+
+    // Insert the new student
+    const studentResult = await client.query(
+      `INSERT INTO students (
+        name, email, phone, address, branch_id, registration_number,
+        father_name, aadhar_number, membership_start, membership_end,
+        total_fee, amount_paid, due_amount, cash, online, security_money,
+        discount, is_active, status, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW())
+      RETURNING id`,
+      [
+        name,
+        email || null,
+        phone,
+        address || null,
+        branch_id,
+        registration_number || null,
+        father_name || null,
+        aadhar_number || null,
+        membershipStart,
+        membershipEndFormatted,
+        totalFee,
+        amountPaid,
+        dueAmount,
+        cash,
+        online,
+        securityMoney,
+        discount,
+        true, // is_active
+        status
+      ]
+    );
+
+    const studentId = studentResult.rows[0].id;
+
+    // Insert into student_membership_history
+    await client.query(
+      `INSERT INTO student_membership_history (
+        student_id, name, email, phone, address,
+        membership_start, membership_end, status,
+        total_fee, amount_paid, due_amount,
+        cash, online, security_money, remark,
+        seat_id, shift_id, branch_id,
+        registration_number, father_name, aadhar_number,
+        profile_image_url, aadhaar_front_url, aadhaar_back_url,
+        locker_id, discount, changed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NOW())`,
+      [
+        studentId, name, email || null, phone, address || null,
+        membershipStart, membershipEndFormatted, status,
+        totalFee, amountPaid, dueAmount,
+        cash, online, securityMoney, null, // remark
+        null, null, branch_id, // seat_id, shift_id
+        registration_number || null, father_name || null, aadhar_number || null,
+        null, null, null, // profile_image_url, aadhaar_front_url, aadhaar_back_url
+        null, discount, // locker_id
+      ]
+    );
+
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful!',
+      studentId
+    });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error in public student registration:', err);
+
+    // Handle duplicate phone number error (additional check)
+    if (err.code === '23505' && err.constraint === 'students_phone_key') {
+      return res.status(400).json({
+        success: false,
+        message: 'A student with this phone number already exists.'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred during registration. Please try again.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  } finally {
+    client.release();
+  }
+});
 
   const withCalculatedStatus = (selectFields = 's.*') => `
     SELECT
