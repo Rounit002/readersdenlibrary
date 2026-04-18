@@ -1,7 +1,7 @@
 // server.js
---const express = require('express');
+const express = require('express');
 const bodyParser = require('body-parser');
-//const session = require('express-session');
+const session = require('express-session');
 const { Pool } = require('pg');
 const path = require('path');
 const cors = require('cors');
