@@ -4,7 +4,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { TooltipProvider } from './components/ui/tooltip';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Dashboard from './pages/Dashboard';
-//import Login from './pages/Login';
+import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import ActiveStudents from './pages/ActiveStudents';
 import AllStudents from './pages/AllStudents';
